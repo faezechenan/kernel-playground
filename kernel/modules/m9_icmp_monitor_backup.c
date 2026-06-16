@@ -24,9 +24,6 @@ static unsigned long ipv6_echo_rep = 0;
 struct lkm_netns_data {
     struct nf_hook_ops nf_hops_localout;
     struct nf_hook_ops nf_hops_prerouting;
-
-    struct nf_hook_ops nf_hops_localout_v6;
-    struct nf_hook_ops nf_hops_prerouting_v6;
 };
 
 static unsigned int nf_callback(void *priv, struct sk_buff *skb,
@@ -37,6 +34,17 @@ static unsigned int nf_callback(void *priv, struct sk_buff *skb,
        	struct iphdr *iph;
 	struct ipv6hdr *ip6h;
 
+/*	if (!skb || !pskb_may_pull(skb, sizeof(*ip6h))) {
+		printk("weird skb?! Drop it!\n");
+		return NF_DROP;
+	}
+	        ip6h = ipv6_hdr(skb);
+        if (ip6h->nexthdr == IPPROTO_ICMPV6) {
+                printk("recevied ICMPv6 packet! Drop it!\n");
+                return NF_DROP;
+        }
+
+*/
 	if (!skb)
         	 return NF_ACCEPT;
 
@@ -46,17 +54,17 @@ static unsigned int nf_callback(void *priv, struct sk_buff *skb,
 
 		if (iph->protocol == IPPROTO_ICMP) {
 
-		    icmph = icmp_hdr(skb);
+    icmph = icmp_hdr(skb);
 
-		    if (icmph->type == ICMP_ECHO &&
-		        state->hook == NF_INET_LOCAL_OUT) {
+    if (icmph->type == ICMP_ECHO &&
+        state->hook == NF_INET_LOCAL_OUT) {
 
-		        ipv4_echo_req++;
-     		   	printk("IPv4 Echo Request count = %lu\n", ipv4_echo_req);
-		    }
+        ipv4_echo_req++;
+        printk("IPv4 Echo Request count = %lu\n", ipv4_echo_req);
+    }
 
-  		  else if (icmph->type == ICMP_ECHOREPLY &&
-            		 state->hook == NF_INET_PRE_ROUTING) {
+    else if (icmph->type == ICMP_ECHOREPLY &&
+             state->hook == NF_INET_PRE_ROUTING) {
 
         ipv4_echo_rep++;
         printk("IPv4 Echo Reply count = %lu\n", ipv4_echo_rep);
@@ -65,28 +73,26 @@ static unsigned int nf_callback(void *priv, struct sk_buff *skb,
 	}
 
 	else if (skb->protocol == htons(ETH_P_IPV6)) {
+		icmp6h = (struct icmp6hdr *)(skb_transport_header(skb));
 
-    ip6h = ipv6_hdr(skb);
+   		 if (ip6h->nexthdr == IPPROTO_ICMPV6) {
+		        icmp6h = icmp6_hdr(skb);
 
-    if (ip6h->nexthdr == IPPROTO_ICMPV6) {
+			if (icmp6h->icmp6_type == ICMPV6_ECHO_REQUEST &&
+			    state->hook == NF_INET_LOCAL_OUT) {
 
-        icmp6h = icmp6_hdr(skb);
+			    ipv6_echo_req++;
+			    printk("IPv6 Echo Request count = %lu\n", ipv6_echo_req);
+			}
 
-        if (icmp6h->icmp6_type == ICMPV6_ECHO_REQUEST &&
-            state->hook == NF_INET_LOCAL_OUT) {
+			else if (icmp6h->icmp6_type == ICMPV6_ECHO_REPLY &&
+			    state->hook == NF_INET_PRE_ROUTING) {
 
-            ipv6_echo_req++;
-            printk("IPv6 Echo Request count = %lu\n", ipv6_echo_req);
-        }
-
-        else if (icmp6h->icmp6_type == ICMPV6_ECHO_REPLY &&
-                 state->hook == NF_INET_PRE_ROUTING) {
-
-            ipv6_echo_rep++;
-            printk("IPv6 Echo Reply count = %lu\n", ipv6_echo_rep);
-        }
-    }
-}
+			    ipv6_echo_rep++;
+			    printk("IPv6 Echo Reply count = %lu\n", ipv6_echo_rep);
+			}
+    		}
+	}
 
 	return NF_ACCEPT;
 }
@@ -103,20 +109,6 @@ static const struct nf_hook_ops prerouting_template = {
     .hooknum  = NF_INET_PRE_ROUTING,
     .pf       = PF_INET,
     .priority = NF_IP_PRI_FIRST,
-};
-
-static const struct nf_hook_ops localout_template_v6 = {
-    .hook     = nf_callback,
-    .hooknum  = NF_INET_LOCAL_OUT,
-    .pf       = PF_INET6,
-    .priority = NF_IP6_PRI_FIRST,
-};
-
-static const struct nf_hook_ops prerouting_template_v6 = {
-    .hook     = nf_callback,
-    .hooknum  = NF_INET_PRE_ROUTING,
-    .pf       = PF_INET6,
-    .priority = NF_IP6_PRI_FIRST,
 };
 
 static struct lkm_netns_data *lkm_netns(struct net *net)
@@ -136,18 +128,8 @@ static int __net_init netns_init(struct net *net)
        		&prerouting_template,
        		sizeof(struct nf_hook_ops));
 
-	memcpy(&data->nf_hops_localout_v6,
-       		&localout_template_v6,
-       		sizeof(struct nf_hook_ops));
-
-	memcpy(&data->nf_hops_prerouting_v6,
-       		&prerouting_template_v6,
-       		sizeof(struct nf_hook_ops));
-
 	nf_register_net_hook(net, &data->nf_hops_localout);
 	nf_register_net_hook(net, &data->nf_hops_prerouting);
-	nf_register_net_hook(net, &data->nf_hops_localout_v6);
-	nf_register_net_hook(net, &data->nf_hops_prerouting_v6);
 
 	return 0;
 }
@@ -156,10 +138,8 @@ static void __net_exit netns_exit(struct net *net)
 {
 	struct lkm_netns_data *data = lkm_netns(net);
 
-	nf_unregister_net_hook(net, &data->nf_hops_localout);
-	nf_unregister_net_hook(net, &data->nf_hops_prerouting);
-	nf_unregister_net_hook(net, &data->nf_hops_localout_v6);
-	nf_unregister_net_hook(net, &data->nf_hops_prerouting_v6);
+nf_unregister_net_hook(net, &data->nf_hops_localout);
+nf_unregister_net_hook(net, &data->nf_hops_prerouting);
 }
 
 static struct pernet_operations lkm_netns_ops = {
