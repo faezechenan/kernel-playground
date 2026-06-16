@@ -39,3 +39,19 @@ Ensure that your environment has the necessary kernel headers and build tools in
 ---
 
 *Note:* The actual kernel module source code should be in the `linux` directory, and the `Makefile` is configured to compile it accordingly.
+
+## M9 – ICMP Echo Monitor
+
+### Features
+- Counts IPv4 Echo Request packets
+- Counts IPv4 Echo Reply packets
+- Counts IPv6 Echo Request packets
+- Counts IPv6 Echo Reply packets
+
+### Testing
+- IPv4 functionality was tested successfully using `ping`.
+- IPv6 support was implemented in the module.
+- IPv6 runtime testing could not be completed in the VMware environment because only link-local IPv6 addresses were available, and `ping -6` returned "Network is unreachable".
+
+
+
