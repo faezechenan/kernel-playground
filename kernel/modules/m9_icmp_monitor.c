@@ -1,23 +1,24 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+
 #include <linux/netfilter.h>
+#include <linux/netfilter_ipv4.h>
 #include <linux/netfilter_ipv6.h>
-#include <linux/ipv6.h>
-#include <linux/icmpv6.h>
 
 #include <linux/ip.h>
-#include <linux/icmp.h>
-#include <linux/netfilter_ipv4.h>
-#include <linux/if_ether.h>
+#include <linux/ipv6.h>
 
+#include <linux/icmp.h>
+#include <linux/icmpv6.h>
+
+#include <linux/if_ether.h>
 #include <net/netns/generic.h>
 
 static unsigned int lkm_net_id;
 
 static unsigned long ipv4_echo_req = 0;
 static unsigned long ipv4_echo_rep = 0;
-
 static unsigned long ipv6_echo_req = 0;
 static unsigned long ipv6_echo_rep = 0;
 
@@ -28,6 +29,12 @@ struct lkm_netns_data {
     struct nf_hook_ops nf_hops_localout_v6;
     struct nf_hook_ops nf_hops_prerouting_v6;
 };
+
+/*
+ * Count ICMP/ICMPv6 Echo Request and Echo Reply packets.
+ * Echo Requests are observed at NF_INET_LOCAL_OUT.
+ * Echo Replies are observed at NF_INET_PRE_ROUTING.
+ */
 
 static unsigned int nf_callback(void *priv, struct sk_buff *skb,
 				const struct nf_hook_state *state)
@@ -52,41 +59,41 @@ static unsigned int nf_callback(void *priv, struct sk_buff *skb,
 		        state->hook == NF_INET_LOCAL_OUT) {
 
 		        ipv4_echo_req++;
-     		   	printk("IPv4 Echo Request count = %lu\n", ipv4_echo_req);
+     		   	pr_info("IPv4 Echo Request count = %lu\n", ipv4_echo_req);
 		    }
 
   		  else if (icmph->type == ICMP_ECHOREPLY &&
             		 state->hook == NF_INET_PRE_ROUTING) {
 
-        ipv4_echo_rep++;
-        printk("IPv4 Echo Reply count = %lu\n", ipv4_echo_rep);
-    }
-}
+		        ipv4_echo_rep++;
+		        pr_info("IPv4 Echo Reply count = %lu\n", ipv4_echo_rep);
+    		  }
+		}
 	}
 
 	else if (skb->protocol == htons(ETH_P_IPV6)) {
 
-    ip6h = ipv6_hdr(skb);
+	    ip6h = ipv6_hdr(skb);
 
-    if (ip6h->nexthdr == IPPROTO_ICMPV6) {
+	    if (ip6h->nexthdr == IPPROTO_ICMPV6) {
 
-        icmp6h = icmp6_hdr(skb);
+        	icmp6h = icmp6_hdr(skb);
 
-        if (icmp6h->icmp6_type == ICMPV6_ECHO_REQUEST &&
-            state->hook == NF_INET_LOCAL_OUT) {
+       		 if (icmp6h->icmp6_type == ICMPV6_ECHO_REQUEST &&
+            		state->hook == NF_INET_LOCAL_OUT) {
 
-            ipv6_echo_req++;
-            printk("IPv6 Echo Request count = %lu\n", ipv6_echo_req);
-        }
+	                ipv6_echo_req++;
+                        pr_info("IPv6 Echo Request count = %lu\n", ipv6_echo_req);
+        	}
 
-        else if (icmp6h->icmp6_type == ICMPV6_ECHO_REPLY &&
-                 state->hook == NF_INET_PRE_ROUTING) {
+		else if (icmp6h->icmp6_type == ICMPV6_ECHO_REPLY &&
+                	 state->hook == NF_INET_PRE_ROUTING) {
 
-            ipv6_echo_rep++;
-            printk("IPv6 Echo Reply count = %lu\n", ipv6_echo_rep);
-        }
-    }
-}
+           		 ipv6_echo_rep++;
+            		pr_info("IPv6 Echo Reply count = %lu\n", ipv6_echo_rep);
+        	}
+    	    }
+	}
 
 	return NF_ACCEPT;
 }
@@ -175,11 +182,11 @@ static int __init lkm_init(void)
 
 	rc = register_pernet_subsys(&lkm_netns_ops);
 	if (rc) {
-		printk("cannot register the pernet ops\n");
+		pr_info("cannot register the pernet ops\n");
 		return rc;
 	}
 
-	printk("lkm netfilter module registered\n");
+	pr_info("lkm netfilter module registered\n");
 	return 0;
 }
 
@@ -187,13 +194,13 @@ static void __exit lkm_exit(void)
 {
 	unregister_pernet_subsys(&lkm_netns_ops);
 
-	printk("lkm netfilter module unregistered\n");
+	pr_info("lkm netfilter module unregistered\n");
 }
 
 module_init(lkm_init);
 module_exit(lkm_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Andrea Mayer");
-MODULE_DESCRIPTION("Simple Linux kernel Netfilter Module for dropping ICMPv6 ingress packets");
+MODULE_AUTHOR("Faezeh Chenan");
+MODULE_DESCRIPTION("Netfilter-based ICMP/ICMPv6 Echo Request and Reply monitor");
 MODULE_VERSION("1.0.0");
